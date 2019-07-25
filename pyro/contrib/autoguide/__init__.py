@@ -559,7 +559,7 @@ class AutoDiagonalNormal(AutoContinuous):
 
     def get_transform(self, *args, **kwargs):
         loc, scale = self._loc_scale(*args, **kwargs)
-        return AffineTransform(loc, scale, domain=constraints.real_vector)
+        return AffineTransform(loc, scale)
 
 
 class AutoLowRankMultivariateNormal(AutoContinuous):
