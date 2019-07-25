@@ -341,8 +341,9 @@ class AutoContinuous(AutoGuide):
     :param callable init_loc_fn: A per-site initialization function.
         See :ref:`autoguide-initialization` section for available functions.
     """
-    def __init__(self, model, prefix="auto", init_loc_fn=init_to_median):
+    def __init__(self, model, prefix="auto", init_loc_fn=init_to_median, init_scale = 1.):
         model = InitMessenger(init_loc_fn)(model)
+        self._init_scale = init_scale
         super(AutoContinuous, self).__init__(model, prefix=prefix)
 
     def _setup_prototype(self, *args, **kwargs):
@@ -388,7 +389,7 @@ class AutoContinuous(AutoGuide):
         pos_dist = self.get_posterior(*args, **kwargs)
         return pyro.sample("_{}_latent".format(self.prefix), pos_dist, infer={"is_auxiliary": True})
 
-    def _unpack_latent(self, latent):
+    def unpack_latent(self, latent):
         """
         Unpacks a packed latent tensor, iterating over tuples of the form::
 
@@ -425,7 +426,7 @@ class AutoContinuous(AutoGuide):
 
         # unpack continuous latent samples
         result = {}
-        for site, unconstrained_value in self._unpack_latent(latent):
+        for site, unconstrained_value in self.unpack_latent(latent):
             name = site["name"]
             transform = biject_to(site["fn"].support)
             value = transform(unconstrained_value)
@@ -456,7 +457,7 @@ class AutoContinuous(AutoGuide):
         """
         loc, _ = self._loc_scale(*args, **kwargs)
         return {site["name"]: biject_to(site["fn"].support)(unconstrained_value)
-                for site, unconstrained_value in self._unpack_latent(loc)}
+                for site, unconstrained_value in self.unpack_latent(loc)}
 
     def quantiles(self, quantiles, *args, **kwargs):
         """
@@ -474,7 +475,7 @@ class AutoContinuous(AutoGuide):
         latents = dist.Normal(loc, scale).icdf(quantiles)
         result = {}
         for latent in latents:
-            for site, unconstrained_value in self._unpack_latent(latent):
+            for site, unconstrained_value in self.unpack_latent(latent):
                 result.setdefault(site["name"], []).append(biject_to(site["fn"].support)(unconstrained_value))
         return result
 
@@ -507,7 +508,8 @@ class AutoMultivariateNormal(AutoContinuous):
         """
         loc = pyro.param("{}_loc".format(self.prefix), self._init_loc)
         scale_tril = pyro.param("{}_scale_tril".format(self.prefix),
-                                lambda: eye_like(loc, self.latent_dim),
+                                lambda: eye_like(loc,
+                                    self.latent_dim)*self._init_scale,
                                 constraint=constraints.lower_cholesky)
         return dist.MultivariateNormal(loc, scale_tril=scale_tril)
 
@@ -544,7 +546,8 @@ class AutoDiagonalNormal(AutoContinuous):
         """
         loc = pyro.param("{}_loc".format(self.prefix), self._init_loc)
         scale = pyro.param("{}_scale".format(self.prefix),
-                           lambda: loc.new_ones(self.latent_dim),
+                           lambda: loc.new_ones(
+                               self.latent_dim)*self._init_scale,
                            constraint=constraints.positive)
         return dist.Normal(loc, scale).to_event(1)
 
@@ -597,9 +600,10 @@ class AutoLowRankMultivariateNormal(AutoContinuous):
         """
         loc = pyro.param("{}_loc".format(self.prefix), self._init_loc)
         factor = pyro.param("{}_cov_factor".format(self.prefix),
-                            lambda: loc.new_empty(self.latent_dim, self.rank).normal_(0, (0.5 / self.rank) ** 0.5))
+                            lambda: loc.new_empty(self.latent_dim,
+                                self.rank).normal_(0, (0.5 / self.rank) ** 0.5)*self._init_scale)
         diagonal = pyro.param("{}_cov_diag".format(self.prefix),
-                              lambda: loc.new_full((self.latent_dim,), 0.5),
+                              lambda: loc.new_full((self.latent_dim,), 0.5)*self._init_scale**2,
                               constraint=constraints.positive)
         return dist.LowRankMultivariateNormal(loc, factor, diagonal)
 
