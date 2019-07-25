@@ -19,6 +19,7 @@ from contextlib import ExitStack  # python 3
 
 import torch
 from torch.distributions import biject_to, constraints
+from torch.distributions.transforms import AffineTransform
 
 import pyro
 import pyro.distributions as dist
@@ -555,6 +556,11 @@ class AutoDiagonalNormal(AutoContinuous):
         loc = pyro.param("{}_loc".format(self.prefix))
         scale = pyro.param("{}_scale".format(self.prefix))
         return loc, scale
+
+    def get_transform(self, *args, **kwargs):
+￼	loc, scale = self._loc_scale(*args, **kwargs)
+￼	return AffineTransform(loc, scale, domain=constraints.real_vector)
+￼	
 
 
 class AutoLowRankMultivariateNormal(AutoContinuous):
